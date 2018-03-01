@@ -1,0 +1,1124 @@
+---
+title: "Analysis of Big-Mart Dataset"
+author: "dataMunglers"
+date: "15 December 2017"
+output:
+  html_document:
+    toc: true
+    toc_depth: 6
+    theme: united
+    highlight: tango
+
+---
+  
+### Team Members
+  
+  * *__[Ahmet Yetkin Eser](https://www.linkedin.com/in/ahmet-yetkin-eser-04178a40/)__*
+  
+  * *__[Berkay Soyer](https://www.linkedin.com/in/berkaysoyer/)__*
+  
+  * *__[Feray Ece Topcu]()__*
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+  
+### Our Objective
+
+* The data scientists at BigMart have collected 2013 sales data for 1559 products across 10 stores in different cities. The main objective is to understand whether specific properties of products and/or stores play a significant role in terms of increasing or decreasing sales volume. To achieve this goal, we will build a predictive model and find out the sales of each product at a particular store. This will help BigMart to boost their sales by learning optimised product organization inside stores.
+
+### Dataset
+  
+* We take data from [analyticsvidhya.com](https://www.analyticsvidhya.com), Our data is [Big Mart Sales Practise Problem](https://datahack.analyticsvidhya.com/contest/practice-problem-big-mart-sales-iii/) Data, It is open competition now and its final date is 31 Dec 2017. We downloaded training and test dataset as a csv file. 
+
+#### About BigMart
+
+*  Big Mart is One Stop Shopping center and Free Marketplace. Buy, sell and advertise without fee or at low cost. Find more information about BigMart [Here](http://www.bigmart.com/about-us.html). 
+
+
+##1. Exploring The BigMart Dataset
+
+* Call Libraries and Read Data from File.
+```{r message=FALSE,warning=FALSE}
+library(dplyr)
+library(tidyr)
+library(stringr)
+library(ggplot2)
+library(corrplot)
+library(dummies)
+#setwd("C:/Users/ecetp/Downloads/MEF/BDA 503 - R/Project-BigMart Sales")
+setwd("/Users/yetkineser/Desktop/mef R/data")
+train <- read.csv('bigMartTrain.csv')
+test  <- read.csv('bigMartTest.csv')
+
+```
+
+* View the structure of train with __*glimpse*__ function.
+
+```{r}
+
+glimpse(train)
+
+```
+
+* As a conclusion of glimpse, we can see that our train dataset has 12 columns and 8523 rows. We should observe all columns one by one to explore data. 
+
+
+#### 1.1. Factor Columns
+
+  * *__Item_Identifier__* : Unique Product ID.
+  
+```{r message=FALSE,warning=FALSE}
+
+train %>%
+  summarise(n_distinct(Item_Identifier))
+  
+```
+
+Item_Identifier column has 1559 unique value. So, we can say we will examine 1559 unique item properties due to the stores.
+
+  * *__Item_Fat_Content__* : Whether the product is low fat or not.
+
+```{r message=FALSE,warning=FALSE}
+  
+train %>%
+  group_by(Item_Fat_Content) %>%
+  summarise(Count = n(),Perc=round(n()/nrow(.)*100,2)) %>%
+  arrange(desc(Count))
+  
+```
+  
+Item_Fat_Content distribution can be seen as belove summary. Low fat items have highest rate, so we can say low fat items reside on stores generally. There is corruption about string values, such as "Low fat"/"low fat"/"LF" or "Regular" / "reg" , we know these string values represent same value and so, we should clean this column values on cleaning part.
+
+  * *__Item_Type__* : The category to which the product belongs.
+
+```{r message=FALSE,warning=FALSE}
+  
+train%>%
+  group_by(Item_Type) %>% 
+  summarise(Count = n(), Perc = round(n() / nrow(.) * 100, 2)) %>%
+  arrange(desc(Count))
+
+```
+
+Train dataset has 16 different item_type value and "Fruits and Vegetables" items reside on stores popularly.
+
+  * *__Outlet_Identifier__* : Unique Store ID
+
+```{r message=FALSE,warning=FALSE}
+  
+train %>%
+  group_by(Outlet_Identifier) %>%
+  summarise(Count = n(), Perc = round(n() / nrow(.) * 100, 2)) %>%
+  arrange(desc(Count))
+
+```
+  
+Outlet_Identifier data show that train dataset includes item information of 10 different stores. 
+  
+  * *__Outlet_Size__* : The size of the store in terms of ground area covered.
+
+```{r  message=FALSE,warning=FALSE}
+
+train%>%
+  group_by(Outlet_Size) %>%
+  summarise(Count = n(),Perc = round(n() / nrow(.) * 100, 2)) %>%
+  arrange(desc(Count))
+
+```
+
+As we can see, outlet_size have some null values. So, on cleaning part we should consider about this column,also.
+
+  * *__Outlet_Location_Type__* : The type of city in which the store is located
+
+```{r message=FALSE,warning=FALSE}
+  
+train%>%
+  group_by(Outlet_Location_Type) %>%
+  summarise(Count = n(),Perc = round(n()/nrow(.) * 100, 2)) %>%
+  arrange(desc(Count))
+
+```
+  
+Data of Outlet_Location_Type column distribution is fair for each type. 
+
+  * *__Outlet_Type__* : Whether the outlet is just a grocery store or some sort of supermarket
+
+```{r message=FALSE,warning=FALSE}
+  
+train%>%
+  group_by(Outlet_Type)%>%
+  summarise(Count=n(),Perc=round(n()/nrow(.)*100,2))%>%
+  arrange(desc(Count))
+
+```
+
+ This result show that we have item information on "Supermarket Type1" store with the highest rate (65.43). It means, our data includes "Supermarket Type1" store 
+ mostly.
+ 
+#### 1.2. Numerical Columns
+ 
+  * *__Item_Weight__* : Weight of product.
+
+```{r message=FALSE,warning=FALSE}
+  
+train%>%
+    summarise(is_NULL=sum(is.na(Item_Weight)==1),
+              is_NOT_NULL=sum(!is.na(Item_Weight)==1)
+              )
+  
+train%>%
+  filter(!is.na(Item_Weight))%>%
+  summarise(
+    Max=max(Item_Weight),
+    Min=min(Item_Weight),
+    Mean=mean(Item_Weight),
+    Median=median(Item_Weight),
+    QUA1=quantile(Item_Weight,1/4),
+    QUA3=quantile(Item_Weight,3/4),
+    IQR=IQR(Item_Weight)
+  )
+  
+```
+
+The result show that Item_Weight column has 1463 null value, so cleaning part we should consider this column also. When we exclude the null values, the heaviest item is  21.35 gr and the lightest ite is 4.555 gr. 
+
+  * *__Item_Visibility__* : The % of total display area of all products in a store allocated to the particular product.
+
+```{r message=FALSE,warning=FALSE}
+  
+train%>%
+    summarise(is_NULL=sum(is.na(Item_Visibility)==1),
+              is_NOT_NULL=sum(!is.na(Item_Visibility)==1)
+              )
+  
+train%>%
+  filter(!is.na(Item_Visibility))%>%
+  summarise(
+    Max=max(Item_Visibility),
+    Min=min(Item_Visibility),
+    Mean=mean(Item_Visibility),
+    Median=median(Item_Visibility),
+    QUA1=quantile(Item_Visibility,1/4),
+    QUA3=quantile(Item_Visibility,3/4),
+    IQR=IQR(Item_Visibility)
+  )
+  
+  
+```
+    
+There is no null value on Item_Visibility column but from minumum value we can say there is "0" value on column.
+
+  * *__Item_MRP__* : Maximum Retail Price (list price) of the product.
+
+```{r message=FALSE,warning=FALSE}
+  
+train%>%
+    summarise(is_NULL=sum(is.na(Item_MRP)==1),
+              is_NOT_NULL=sum(!is.na(Item_MRP)==1)
+              )
+  
+train%>%
+  filter(!is.na(Item_MRP))%>%
+  summarise(
+    Max=max(Item_MRP),
+    Min=min(Item_MRP),
+    Mean=mean(Item_MRP),
+    Median=median(Item_MRP),
+    QUA1=quantile(Item_MRP,1/4),
+    QUA3=quantile(Item_MRP,3/4),
+    IQR=IQR(Item_MRP)
+  )
+    
+```
+
+Good news, there is no null or "0" value on ITEM_MRP column. MAx price is 266.8884 and min price is 31.29.
+  
+  
+  * *__Outlet_Establishment_Year__* : The year in which store was established.
+
+```{r message=FALSE,warning=FALSE}
+  
+train%>%
+    summarise(is_NULL=sum(is.na(Outlet_Establishment_Year)==1),
+              is_NOT_NULL=sum(!is.na(Outlet_Establishment_Year)==1)
+              )
+  
+train%>%
+  filter(!is.na(Outlet_Establishment_Year))%>%
+  summarise(
+    Max=max(Outlet_Establishment_Year),
+    Min=min(Outlet_Establishment_Year),
+    Mean=mean(Outlet_Establishment_Year),
+    Median=median(Outlet_Establishment_Year),
+    QUA1=quantile(Outlet_Establishment_Year,1/4),
+    QUA3=quantile(Outlet_Establishment_Year,3/4),
+    IQR=IQR(Outlet_Establishment_Year)
+  )
+  
+```
+    
+The oldest store has opened in 1985 and the newest one has opened in 2009. when we look at mean and median,w e can say stores in dataset are generally old stores. (More than 17-18 years old.)
+    
+  * *__Item_Outlet_Sales__* : Sales of the product in the particulat store. **This is the outcome variable to be predicted.**
+
+```{r message=FALSE,warning=FALSE}
+
+train%>%
+    summarise(is_NULL=sum(is.na(Item_Outlet_Sales)==1),
+              is_NOT_NULL=sum(!is.na(Item_Outlet_Sales)==1)
+              )
+  
+train%>%
+  filter(!is.na(Item_Outlet_Sales))%>%
+  summarise(
+    Max=max(Item_Outlet_Sales),
+    Min=min(Item_Outlet_Sales),
+    Mean=mean(Item_Outlet_Sales),
+    Median=median(Item_Outlet_Sales),
+    QUA1=quantile(Item_Outlet_Sales,1/4),
+    QUA3=quantile(Item_Outlet_Sales,3/4),
+    IQR=IQR(Item_Outlet_Sales)
+  )
+  
+  
+```
+
+Item_Outlet_Sales column has no null values.
+
+* If we want to see good summary of numeric columns, we should use **summary** function as below.
+
+```{r message=FALSE,warning=FALSE}
+
+summary(train)
+
+```
+
+##2. Data Manipulation 
+
+
+* We discover some columns need to be corrected for a good analysis. So, we should manipulate some part of data. Let's first combine the data sets. This will save our time as we don't need to write separate codes for train and test data sets. To combine the two data frames, we must make sure that they have equal columns, which is not the case. Test data set has one less column (response variable). Let's first add the column. We can give this column any value. An intuitive approach would be to extract the mean value of sales from train data set and use it as placeholder for test variable Item_Outlet_Sales. Anyways, let's make it simple for now. I've taken a value -999. Now, we'll combine the data sets.
+
+```{r message=FALSE,warning=FALSE}
+test$Item_Outlet_Sales <- -999
+combi <- rbind(train, test)
+
+```
+
+* We saw on exploring part, Item_Weight column has null values which can affect the result of anaylsis. Impute missing value by median. We are using median because it is known to be highly robust to outliers. Moreover, for this problem, our evaluation metric is RMSE which is also highly affected by outliers. Hence, median is better in this case. 
+
+```{r message=FALSE,warning=FALSE}
+combi$Item_Weight[is.na(combi$Item_Weight)] <- median(combi$Item_Weight, na.rm = TRUE)
+table(is.na(combi$Item_Weight))
+```
+
+* Let's take up Item_Visibility. On exploration part above, we saw item visibility has zero value also, which is practically not feasible. Hence, we'll consider it as a missing value and once again make the imputation using median.
+
+```{r}
+combi$Item_Visibility <- ifelse(combi$Item_Visibility == 0,
+                           median(combi$Item_Visibility), combi$Item_Visibility) 
+```
+
+* Let's proceed to categorical variables now. During exploration, we saw there are mis-matched levels in variables which needs to be corrected.
+Item fat content should be corrected.
+```{r}
+
+combi$Item_Fat_Content <- str_replace(
+           str_replace(
+             str_replace(combi$Item_Fat_Content,"LF","Low Fat")
+             ,"reg","Regular"),"low fat","Low Fat")
+  
+table(combi$Item_Fat_Content)
+
+
+```
+
+
+* We need to mutate new columns for more meaningful data. First, we evaluate Item_Identifier column because We discovered Item_Identifier column has special codes to recognize the type of item when we tried to understand data. So, letters on Item_Identifier column means Food, Drinks and etc. and numbers can be meaningful. We observed first three letters and two letters to control which of them is more meaningful. In any case, we hold both of them as two seperate column to use them later but now, we decided to use first two letters.
+(DR=Drink, FD=Food,NC=Non-Consumable)
+ Secondly, we generate new Outlet_Age column from Outlet_Establishment_Year.
+
+```{r}
+
+##first two and three letter.
+combi <-
+  combi %>%
+  mutate(Item_Identifier_Str3 = substr(Item_Identifier,1,3),  #First three letter of Item_Identifier. 
+         Item_Identifier_Str2 = substr(Item_Identifier,1,2),  #First second letter of Item_Identifier.
+         Item_Identifier_Num=as.numeric(substr(Item_Identifier,4,6)), # Number part of Item_Identifier column.
+         Outlet_Age=2013-Outlet_Establishment_Year, #Outlet Age 
+         PK=row_number())
+
+#table(combi$Item_Identifier_Str3)
+
+table(combi$Item_Identifier_Str2)
+
+
+
+#combi %>% summarise(n_distinct(Item_Identifier_Str3))
+
+```
+
+##3. Data Visualizing
+
+* We should use train data for visualizing because test data has no Item_Outlet_Sales column properly. 
+
+```{r}
+#Split combined data into train and test data again to examine clearly. 
+new_train <- combi %>% 
+  filter(Item_Outlet_Sales != -999)
+
+new_test <- combi %>% 
+  filter(Item_Outlet_Sales == -999)
+#dim(new_train)
+#dim(new_test)
+```
+
+####3.1. Visualizing Manipulated Data 
+
+* We manipulated Item_Fat_Content column; so graph it to see new version.
+```{r}
+# Looking at new Item_Fat_Content column.
+qplot(x=Item_Fat_Content,data=new_train) +
+  geom_bar(fill="tomato") +
+  theme_minimal()
+
+```
+
+* Looking at Item type and Item Identifier because we observed there is a correlation between these two columns and we manipulated Item_Identifier_Content column as Item_Identifier_Str2 according to Item_Type data. (For example;  if Item_Type = "Soft Drinks", then Item_Identifier_Content starts with 'DR' .) As you can see on graph; manipulated Item_Identifier_Str2 column is correct and clear now. So output graph shows; DR (Drink) Idenfier has 3 types of item contents while FD(Food) Identifier has 11 types and NC (Non-Consumable) Identifier has 3 types of item contents. Additionally, we can see "Dairy" type is in both DR and FD. Furthermore; "Soft Drinks" consists the most number of items in "DR" Identifier, "Fruit and Vegetables" in "FD" Indetifier and "Household" in "NC" Identifier.  
+
+```{r}
+
+# Looking at Item Type with facet wrap according to Item_Identifier_Str
+qplot(x=Item_Type,data=new_train)+
+  geom_bar(fill="tomato")+
+  theme(axis.text = element_text(color="tomato"))+
+  coord_flip() +
+  theme_minimal() +
+  facet_wrap(~Item_Identifier_Str2,nrow=1)
+```
+
+* Observing the relationship between Item Type/Item Identifier and Outlet_Identifier column to check Item distribution is similar for each Outlet. As we can see, the distribution of items on outlets is very similar. 
+
+```{r}
+# Looking at Item Type with facet wrap according to Outlet Identifier.
+
+qplot(x = Item_Identifier_Str2, data = new_train) +
+  geom_bar(fill = "tomato") +
+  theme(axis.text = element_text(angle = 0)) +
+  coord_flip() +
+  theme_minimal() +
+  facet_wrap(~Outlet_Identifier, nrow = 2)
+
+
+```
+
+####3.2. Visualizing Relationship between Item_Outlet_Sales and Other Categorical Columns
+
+* Observing the histogram of Item Outlet Sales for looking of sales distribution. Also, the histogram of Item Outlet Sales with sqrt and log function are drawn, so we can decide which one is more close to normal distribution. As conclusion, we can say SQRT of Item Outlet Sales is much more normal than the others.
+
+```{r message=FALSE,warning=FALSE}
+library(gridExtra)
+
+# Looking at Item_Outlet_Sales 
+p0 <- qplot(x = Item_Outlet_Sales, data = new_train, binwidth = 250,fill=I("lightblue")) +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1)) +
+  theme_minimal() +
+  scale_x_continuous(limits = c(0, 10000), breaks = seq(0, 10000, 1000)) 
+  
+# It is better now like normal distibution with sqrt and log10
+p1 <- qplot(x = sqrt(Item_Outlet_Sales), data = new_train, binwidth = 1,
+      ylab = "Count Of Sales",
+      xlab = "SQRT of Outlet Sales",fill=I("tomato")) +
+  theme(axis.text.x = element_text(angle = 90),
+        axis.text.y = element_text(angle = 30)) +
+  theme_minimal() +
+  scale_x_continuous(limits = c(0,100), breaks = seq(0,70,15)) +
+  scale_y_continuous(limits = c(0,200), breaks = seq(0,200,100))
+
+p2 <- qplot(x = log10(Item_Outlet_Sales+1), data = new_train, binwidth = 0.01,
+      ylab = "Count Of Sales",
+      xlab = "LOG10 of Outlet Sales",fill=I("lightblue")) +
+  theme(axis.text.x = element_text(angle = 90),
+        axis.text.y = element_text(angle = 30)) +
+  theme_minimal() +
+  scale_x_continuous(limits = c(1.5,4.5), breaks = seq(1.5, 4.5, 0.5)) +
+  scale_y_continuous(limits = c(0,200), breaks = seq(0, 200, 100))
+
+grid.arrange(p0, p1, p2, ncol=1)
+
+```
+
+* We can say SQRT of Item Outlet Sales has normal distribution according to above graphs. 
+* Here we can see the comparison of distributions according to low and regular fat. The distribution of sqrt of Outlet Sales for regular and low fat close to a normal distribution. However, low fat's distribution is slightly skewed to right. Also, low fat's sales volume is considerably higher than regular items.
+
+```{r message=FALSE,warning=FALSE}
+
+# "Sales Distribution trough the Item Fat Content"
+p0 <- qplot(x = sqrt(Item_Outlet_Sales), data = new_train, binwidth = 1,
+      ylab = "",
+      xlab = "SQRT of Outlet Sales",
+      fill=I("tomato")) +
+  theme(axis.text.x = element_text(angle = 90),
+        axis.text.y = element_text(angle = 30)) +
+  scale_x_continuous(limits = c(0,100), breaks = seq(0,120,15)) +
+  scale_y_continuous(limits = c(0,200), breaks = seq(0,200,100)) +
+  theme_minimal() +
+  facet_wrap(~Item_Fat_Content)
+
+#boxplot
+p1 <- qplot(x = Item_Fat_Content, y = sqrt(Item_Outlet_Sales),
+      ylab = "SQRT of Outlet Sales",
+      data = new_train,
+      geom = "boxplot",
+      fill=I("tomato")) +
+      theme_minimal() +
+      theme(axis.text.x = element_text(angle = 0),
+            axis.text.y = element_text(angle = 30))
+
+grid.arrange(p0, p1, ncol=1)
+
+```
+
+
+* We take the sqrt of item outles sales created box plots for each item type to show the relationship. The variation of Snack Foods sales is significantly higher than other types. We assume that since Seafood has more types of items varying from luxury to cost-effective compared to other item types.
+
+```{r message=FALSE,warning=FALSE}
+# It is better now like normal distibution with sqrt and log10
+p0 <- qplot(x = sqrt(Item_Outlet_Sales), data = new_train, binwidth = 1,
+      ylab = "Sales Distribution",
+      xlab = "SQRT of Outlet Sales",
+      fill=I("tomato")) +
+  theme(axis.text.x = element_text(angle = 90),
+        axis.text.y = element_text(angle = 30)) +
+  theme_minimal() +
+  scale_x_continuous(limits = c(0,100), breaks = seq(0,120,15)) +
+  scale_y_continuous(limits = c(0,40), breaks = seq(0,40,10)) +
+  facet_wrap(~Item_Type)
+
+p1 <- qplot(x = Item_Type, y = sqrt(Item_Outlet_Sales),
+      ylab = "SQRT of Outlet Sales",
+      data = new_train,
+      geom = "boxplot",
+      fill=I("tomato")) +
+      theme_minimal() +
+      theme(axis.text.x = element_text(angle = 90),
+            axis.text.y = element_text(angle = 30))
+
+p0
+p1
+
+```
+
+---
+* We investigated the relationship between Outlet Sales and Outlet Identifier by plotting a box plot. It is clearly noticeable that the distributions are grouped according to Outlet Types. The means of outlet types lying in the same group are similar.
+
+```{r message=FALSE,warning=FALSE}
+# It is better now like normal distibution with sqrt and log10
+p0 <- qplot(x = sqrt(Item_Outlet_Sales), data = new_train, binwidth = 1,
+      ylab = "Sales Distribution",
+      xlab = "SQRT of Outlet Sales",
+      fill=I("tomato")) +
+  theme(axis.text.x = element_text(angle = 90),
+        axis.text.y = element_text(angle = 30)) +
+  theme_minimal() +
+  scale_x_continuous(limits = c(0,100), breaks = seq(0,120,15)) +
+  scale_y_continuous(limits = c(0,40), breaks = seq(0,40,10)) +
+  facet_wrap(~Outlet_Identifier,2)
+
+p1 <- qplot(x = Outlet_Identifier, y = sqrt(Item_Outlet_Sales), 
+      color = Outlet_Type,
+      ylab = "SQRT of Outlet Sales",
+      data = new_train,
+      geom = "boxplot",
+      fill=Outlet_Type) +
+      #geom_vline(aes(xintercept=quantile(new_train$Item_Outlet_Sales, c(.01))),  color="red", linetype="dashed", size=1) +
+      theme_minimal() +
+      theme(axis.text.x = element_text(angle = 90),
+            axis.text.y = element_text(angle = 30))
+
+#library(cowplot)
+#cowplot::plot_grid(p0, p1 ,labels = c("A", "B") ,ncol = 2)
+p0
+p1
+
+```
+
+* This graphs show the releationship between Item Outlet Sales and Outlet Size. The items are more frequently bought as outlet size grows.
+
+```{r message=FALSE,warning=FALSE}
+# It is better now like normal distibution with sqrt and log10
+p0 <- qplot(x = sqrt(Item_Outlet_Sales), data = new_train, binwidth = 0.5,
+      ylab = "Sales Distribution",
+      xlab = "SQRT of Outlet Sales",
+      fill=I("tomato")) +
+  theme(axis.text.x = element_text(angle = 90),
+        axis.text.y = element_text(angle = 30)) +
+  theme_minimal() +
+  scale_x_continuous(limits = c(0,100), breaks = seq(0,120,15)) +
+  scale_y_continuous(limits = c(0,40), breaks = seq(0,40,10)) +
+  facet_wrap(~Outlet_Size)
+
+p1 <- qplot(x = Outlet_Size, y = sqrt(Item_Outlet_Sales),
+      ylab = "SQRT of Outlet Sales",
+      data = new_train,
+      geom = "boxplot",
+      fill=I("tomato")) +
+      theme_minimal() +
+      theme(axis.text.x = element_text(angle = 90),
+            axis.text.y = element_text(angle = 30))
+
+p2 <- qplot(x = Item_Outlet_Sales, data = new_train, binwidth = 0.02,
+      ylab = "Count Of Sales",
+      xlab = "Log10 of Outlet Sales",
+      geom = "freqpoly",
+      color = Outlet_Size) +
+  theme(axis.text.x = element_text(angle = 90, color = "tomato"),
+        axis.text.y = element_text(angle = 30, color = "tomato")) +
+        theme_minimal() +
+  scale_x_continuous(limits = c(1.5,4.5), breaks = seq(1.5,4.5,0.5)) +
+  scale_y_continuous(limits = c(0,100), breaks = seq(0,100,10)) +
+  scale_x_log10()
+
+
+grid.arrange(p0, p1, ncol=1)
+
+p2 
+
+```
+* In order to investigate the relationship between Outlet's locations and Sales, we plotted histograms and box plots for each Tier. Tier 2's sales is distinguishedly higher than the other two. So, the location of the outlet might be an important factor on affecting sales.
+
+```{r message=FALSE,warning=FALSE}
+# It is better now like normal distibution with sqrt and log10
+p0 <- qplot(x = sqrt(Item_Outlet_Sales), data = new_train, binwidth = 0.5,
+      ylab = "Sales Distribution",
+      xlab = "SQRT of Outlet Sales",
+      fill=I("tomato")) +
+  theme(axis.text.x = element_text(angle = 90),
+        axis.text.y = element_text(angle = 30)) +
+  theme_minimal() +
+  scale_x_continuous(limits = c(0,100), breaks = seq(0,120,15)) +
+  scale_y_continuous(limits = c(0,40), breaks = seq(0,40,10)) +
+  facet_wrap(~Outlet_Location_Type)
+
+p1 <- qplot(x = Outlet_Location_Type, y = sqrt(Item_Outlet_Sales),
+      ylab = "SQRT of Outlet Sales",
+      data = new_train,
+      geom = "boxplot",
+      fill=I("tomato")) +
+      theme_minimal() +
+      theme(axis.text.x = element_text(angle = 0),
+            axis.text.y = element_text(angle = 30))
+
+grid.arrange(p0, p1, ncol=1)
+
+```
+
+
+
+
+```{r echo=FALSE,message=FALSE,warning=FALSE}
+# It is better now like normal distibution with sqrt and log10
+p0 <- qplot(x = sqrt(Item_Outlet_Sales), data = new_train, binwidth = 0.3,
+      ylab = "Sales Distribution",
+      xlab = "SQRT of Outlet Sales",
+      fill=I("tomato")) +
+  theme(axis.text.x = element_text(angle = 90),
+        axis.text.y = element_text(angle = 30)) +
+  theme_minimal() +
+  scale_x_continuous(limits = c(0,100), breaks = seq(0,120,15)) +
+  scale_y_continuous(limits = c(0,40), breaks = seq(0,40,10)) +
+  facet_wrap(~Outlet_Type)
+
+p1 <- qplot(x = Outlet_Type, y = sqrt(Item_Outlet_Sales),
+      ylab = "SQRT of Outlet Sales",
+      data = new_train,
+      geom = "boxplot",
+      fill=I("tomato")) +
+      theme_minimal() +
+      theme(axis.text.x = element_text(angle = 90),
+            axis.text.y = element_text(angle = 30))
+p0
+p1
+#grid.arrange(p0, p1, ncol=1)
+
+```
+
+
+* We compared the sales distributions of each unique identifier. DR stands for Drinkables, FD stands for Food and NC stands for Non Consumable. The frequency of sales for FD is significantly higher than DR and NC. However, the means and percentiles of the all identifier are similar to each other. The reason behind this might be the amount of items of FD is much higher than DR and NC.
+
+```{r message=FALSE,warning=FALSE}
+# It is better now like normal distibution with sqrt and log10
+p0 <- qplot(x = sqrt(Item_Outlet_Sales), data = new_train, binwidth = 0.1,
+      ylab = "Sales Distribution",
+      xlab = "SQRT of Outlet Sales",
+      fill=I("tomato")) +
+  theme(axis.text.x = element_text(angle = 90),
+        axis.text.y = element_text(angle = 30)) +
+  theme_minimal() +
+  scale_x_continuous(limits = c(0,100), breaks = seq(0,120,15)) +
+  scale_y_continuous(limits = c(0,20), breaks = seq(0,20,5)) +
+  facet_wrap(~Item_Identifier_Str2)
+
+p1 <- qplot(x = Item_Identifier_Str2, y = sqrt(Item_Outlet_Sales),
+      ylab = "SQRT of Outlet Sales",
+      data = new_train,
+      geom = "boxplot",
+      fill=I("tomato")) +
+      theme_minimal() +
+      theme(axis.text.x = element_text(angle = 90),
+            axis.text.y = element_text(angle = 30))
+
+grid.arrange(p0, p1, ncol=1)
+
+```
+
+####3.3. Visualizing Relationship between Item_Outlet_Sales and Other Numerical Columns  
+
+* Firstly, all categorical columns convert into numerical columns because looking at the correlation between numeric columns and Item Outlet Sales.
+
+Bulk data is like that:
+
+```{r message = FALSE, warning = FALSE}
+new_combi <- rbind(new_train, new_test)
+
+glimpse(new_combi)
+
+```
+
+
+* First we change our categorical data to numerical(1,0) data by spread columns.
+
+```{r message = FALSE, warning = FALSE}
+new_combi <- rbind(new_train, new_test)
+
+new_combi$Item_Fat_Content <- ifelse(combi$Item_Fat_Content == "Regular",1,0)
+
+library(dummies)
+
+new_combi <- dummy.data.frame(new_combi, names = c('Outlet_Size','Outlet_Location_Type'
+                                            ,'Outlet_Type','Item_Identifier_Str2'),sep = '_')
+
+glimpse(new_combi)
+```
+
+
+* We delete our character columns before correlation.
+
+```{r message = FALSE, warning = FALSE}
+
+new_combi <- select(new_combi, -c(Item_Identifier, Outlet_Identifier, Item_Fat_Content,Outlet_Establishment_Year, Item_Type, Item_Identifier_Str3, PK))
+
+str(new_combi)
+
+```
+
+* We divide our test and train data for looking correlation.
+
+```{r message = FALSE, warning = FALSE}
+
+pred_train <- new_combi %>% 
+  filter(Item_Outlet_Sales != -999)
+
+pred_test <- new_combi %>% 
+  filter(Item_Outlet_Sales == -999)
+#dim(pred_train)
+#dim(pred_test)
+```
+
+
+* Looking correlation between numerical data  columns and Item_Outlet_Sales.
+
+```{r message = FALSE, warning = FALSE}
+
+p1 <- ggplot(pred_train, aes(x = Item_Weight, y = Item_Outlet_Sales)) +
+  geom_point() +
+  geom_smooth(method = 'lm', se = FALSE, color='tomato')
+
+p2 <- ggplot(pred_train, aes(x = Item_Visibility, y = Item_Outlet_Sales)) +
+  geom_point() +
+  geom_smooth(method = 'lm', se = FALSE, color='tomato')
+
+p3 <- ggplot(pred_train, aes(x = Item_MRP, y = Item_Outlet_Sales)) +
+  geom_point() +
+  geom_smooth(method = 'lm', se = FALSE, color='tomato')
+
+p4 <- ggplot(pred_train, aes(x = Item_Identifier_Num, y = Item_Outlet_Sales)) +
+  geom_point() +
+  geom_smooth(method = 'lm', se = FALSE, color='tomato')
+
+p5 <- ggplot(pred_train, aes(x = Outlet_Age, y = Item_Outlet_Sales)) +
+  geom_point() +
+  geom_smooth(method = 'lm', se = FALSE, color='tomato')
+
+grid.arrange(p1, p2, p3, p4, p5, ncol=3)
+```
+
+
+* Look at correlation matrix. ([https://cran.r-project.org](https://cran.r-project.org/web/packages/corrplot/vignettes/corrplot-intro.html)).
+
+```{r message = FALSE, warning = FALSE}
+
+library("corrplot")
+library(RColorBrewer)
+
+M<-cor(pred_train)
+
+
+corrplot(M, diag = FALSE, order = "FPC",
+         tl.pos = "td", tl.cex = 0.5, method = "circle",type="upper")
+
+```
+
+##4. Modeling
+
+###4.1. Discover Models
+
+Multiple Regression is used when response variable is continuous in nature and predictors are many. Had it been categorical, we would have used Logistic Regression.
+
+* Model1: Linear Regression for all dataset which is bulk.
+
+```{r message = FALSE, warning = FALSE}
+
+new_train <- select(new_train, -c(Item_Identifier, Item_Identifier_Str3, Outlet_Establishment_Year, PK))
+
+set.seed(1)
+n <- nrow(new_train)
+shuffled <- new_train[sample(n),]
+#glimpse(new_train)
+
+#split train data again:
+train_indices <- 1:round(0.7*n)
+test_indices <-  (round(0.7*n)+1):n
+
+splitted_train_simple <- shuffled[train_indices,]
+splitted_test_simple <- shuffled[test_indices,]
+
+
+# build model with train data: (70% of actual data)
+linear_model_simple <- lm(Item_Outlet_Sales ~ ., data = splitted_train_simple)
+#summary(linear_model_simple)
+linear_model_log1<- lm(log10(Item_Outlet_Sales) ~ ., data = splitted_train_simple)
+#summary(linear_model_log)
+linear_model_sqrt <- lm(sqrt(Item_Outlet_Sales) ~ ., data = splitted_train_simple)
+#summary(linear_model_sqrt)
+ 
+#make prediction with test data (%30 of actual train data)
+pred_simple_test <- predict(linear_model_simple, splitted_test_simple)
+pred_log_test <-10 ^ predict(linear_model_log1, splitted_test_simple)
+pred_sqrt_test <-predict(linear_model_sqrt, splitted_test_simple) ^ 2
+pred_simple_train <- predict(linear_model_simple, splitted_train_simple)
+pred_log_train <-10 ^ predict(linear_model_log1, splitted_train_simple)
+pred_sqrt_train <-predict(linear_model_sqrt, splitted_train_simple) ^ 2
+
+# 
+# MAE Function for test
+MAE <- function(actual, predicted){mean(abs(actual - predicted))}
+# MAE of Simple for test
+model1_mae_simple <- MAE(splitted_test_simple$Item_Outlet_Sales, pred_simple_test)
+# MAE of Log for test
+model1_mae_log <- (MAE(splitted_test_simple$Item_Outlet_Sales, pred_log_test))
+# MAE of Sqrt for test
+model1_mae_sqrt <- (MAE(splitted_test_simple$Item_Outlet_Sales, pred_sqrt_test))
+
+# RMSE Function
+RMSE <- function(actual, predicted)  {sqrt(mean((actual - predicted)^2))}
+# RMSE of Simple for test dataset
+model1_rmse_simple_test <-(RMSE(splitted_test_simple$Item_Outlet_Sales, pred_simple_test))
+# RMSE of Simple for train dataset
+model1_rmse_simple_train <-(RMSE(splitted_train_simple$Item_Outlet_Sales, pred_simple_train))
+# RMSE of Simple for train/test
+model1_rmse_ratio <- (RMSE(splitted_train_simple$Item_Outlet_Sales, pred_simple_train))/(RMSE(splitted_test_simple$Item_Outlet_Sales, pred_simple_test))
+# RMSE of Log for test dataset
+model1_rmse_log_test <- (RMSE(splitted_test_simple$Item_Outlet_Sales, pred_log_test))
+# RMSE of Log for train dataset
+model1_rmse_log_train <- (RMSE(splitted_train_simple$Item_Outlet_Sales, pred_log_train))
+# RMSE of Log for train/test
+model1_rmse_log_ratio <- (RMSE(splitted_train_simple$Item_Outlet_Sales, pred_log_train))/(RMSE(splitted_test_simple$Item_Outlet_Sales, pred_log_test))
+# RMSE of Sqrt for test dataset
+model1_rmse_sqrt_test <- (RMSE(splitted_test_simple$Item_Outlet_Sales, pred_sqrt_test))
+# RMSE of Sqrt for train dataset
+model1_rmse_sqrt_train <- (RMSE(splitted_train_simple$Item_Outlet_Sales, pred_sqrt_train))
+# RMSE of Sqrt for train/test
+model1_rmse_sqrt_ratio <-(RMSE(splitted_train_simple$Item_Outlet_Sales, pred_sqrt_train))/(RMSE(splitted_test_simple$Item_Outlet_Sales, pred_sqrt_test))
+
+```
+
+
+* Model2: Linear Regression for all dataset which generated dummy library.
+
+```{r message = FALSE, warning = FALSE}
+set.seed(1)
+n <- nrow(pred_train)
+shuffled <- pred_train[sample(n),]
+#glimpse(pred_train)
+
+
+#split train data again:
+train_indices <- 1:round(0.7*n)
+test_indices <-  (round(0.7*n)+1):n
+
+splitted_train <- shuffled[train_indices,]
+splitted_test <- shuffled[test_indices,]
+
+
+# build model with train data: (70% of actual data)
+linear_model_simple <- lm(Item_Outlet_Sales ~ ., data = splitted_train)
+#summary(linear_model_simple)
+ linear_model_log2 <- lm(log10(Item_Outlet_Sales) ~ ., data = splitted_train)
+#summary(linear_model_log)
+ linear_model_sqrt <- lm(sqrt(Item_Outlet_Sales) ~ ., data = splitted_train)
+#summary(linear_model_sqrt)
+ 
+#make prediction with test data (%30 of actual train data)
+pred_simple_test <- predict(linear_model_simple, splitted_test)
+pred_log_test <-10 ^ predict(linear_model_log2, splitted_test)
+pred_sqrt_test <-predict(linear_model_sqrt, splitted_test) ^ 2
+pred_simple_train <- predict(linear_model_simple, splitted_train)
+pred_log_train <-10 ^ predict(linear_model_log2, splitted_train)
+pred_sqrt_train <-predict(linear_model_sqrt, splitted_train) ^ 2
+
+# 
+# MAE Function for test
+(MAE <- function(actual, predicted){mean(abs(actual - predicted))})
+# MAE of Simple for test
+MAE(splitted_test$Item_Outlet_Sales, pred_simple_test)
+# MAE of Log for test
+(MAE(splitted_test$Item_Outlet_Sales, pred_log_test))
+# MAE of Sqrt for test
+(MAE(splitted_test$Item_Outlet_Sales, pred_sqrt_test))
+
+# RMSE Function
+(RMSE <- function(actual, predicted)  {sqrt(mean((actual - predicted)^2))})
+# RMSE of Simple for test dataset
+(RMSE(splitted_test$Item_Outlet_Sales, pred_simple_test))
+# RMSE of Simple for train dataset
+(RMSE(splitted_train$Item_Outlet_Sales, pred_simple_train))
+# RMSE of Simple for train/test
+(RMSE(splitted_train$Item_Outlet_Sales, pred_simple_train))/(RMSE(splitted_test$Item_Outlet_Sales, pred_simple_test))
+# RMSE of Log for test dataset
+(RMSE(splitted_test$Item_Outlet_Sales, pred_log_test))
+# RMSE of Log for train dataset
+(RMSE(splitted_train$Item_Outlet_Sales, pred_log_train))
+# RMSE of Log for train/test
+(RMSE(splitted_train$Item_Outlet_Sales, pred_log_train))/(RMSE(splitted_test$Item_Outlet_Sales, pred_log_test))
+# RMSE of Sqrt for test dataset
+(RMSE(splitted_test$Item_Outlet_Sales, pred_sqrt_test))
+# RMSE of Sqrt for train dataset
+(RMSE(splitted_train$Item_Outlet_Sales, pred_sqrt_train))
+# RMSE of Sqrt for train/test
+(RMSE(splitted_train$Item_Outlet_Sales, pred_sqrt_train))/(RMSE(splitted_test$Item_Outlet_Sales, pred_sqrt_test))
+
+```
+
+```{r message = FALSE, warning = FALSE}
+
+
+summary(linear_model_simple)$coefficients[,4] < 0.05
+('')
+summary(linear_model_log2)$coefficients[,4] < 0.05
+('')
+summary(linear_model_sqrt)$coefficients[,4] < 0.05
+
+```
+
+* Model3: Linear Regression based on summary of regressions(p values<0.05).
+
+```{r message = FALSE, warning = FALSE}
+set.seed(1)
+
+(formula_simp <- as.formula(Item_Outlet_Sales ~ Item_MRP + Outlet_Size_ + `Outlet_Type_Grocery Store` + `Outlet_Type_Supermarket Type1` + `Outlet_Type_Supermarket Type2`+ Item_Identifier_Num + Outlet_Age))
+
+(formula_log <- as.formula(log10(Item_Outlet_Sales) ~ Item_MRP + Outlet_Size_ + Outlet_Size_High + `Outlet_Location_Type_Tier 1` + `Outlet_Location_Type_Tier 2` + `Outlet_Type_Grocery Store` + `Outlet_Type_Supermarket Type1` + `Outlet_Type_Supermarket Type2`+ Item_Identifier_Num + Outlet_Age))
+
+(formula_sqrt <- as.formula(sqrt(Item_Outlet_Sales) ~ Item_MRP + Outlet_Size_ + `Outlet_Type_Grocery Store` + `Outlet_Type_Supermarket Type1` + `Outlet_Type_Supermarket Type2`+ Item_Identifier_Num + Outlet_Age))
+
+# build model with train data: (70% of actual data)
+linear_model_simple <- lm(formula_simp, data = splitted_train)
+#summary(linear_model_simple)
+ linear_model_log3 <- lm(formula_log, data = splitted_train)
+#summary(linear_model_log)
+ linear_model_sqrt <- lm(formula_sqrt, data = splitted_train)
+#summary(linear_model_sqrt)
+  
+# make prediction with test data (%30 of actual train data)
+pred_simple_test <- predict(linear_model_simple, splitted_test)
+pred_log_test <-10 ^ predict(linear_model_log3, splitted_test)
+pred_sqrt_test <-predict(linear_model_sqrt, splitted_test) ^ 2
+pred_simple_train <- predict(linear_model_simple, splitted_train)
+pred_log_train <-10 ^ predict(linear_model_log3, splitted_train)
+pred_sqrt_train <-predict(linear_model_sqrt, splitted_train) ^ 2
+
+
+# MAE Function
+MAE <- function(actual, predicted){mean(abs(actual - predicted))}
+# MAE of Simple for test
+MAE(splitted_test$Item_Outlet_Sales, pred_simple_test)
+# MAE of Log for test
+(MAE(splitted_test$Item_Outlet_Sales, pred_log_test))
+# MAE of Sqrt for Test
+(MAE(splitted_test$Item_Outlet_Sales, pred_sqrt_test))
+
+# RMSE Function
+RMSE <- function(actual, predicted)  {sqrt(mean((actual - predicted)^2))}
+# RMSE of Simple for test dataset
+(RMSE(splitted_test$Item_Outlet_Sales, pred_simple_test))
+# RMSE of Simple for train dataset
+(RMSE(splitted_train$Item_Outlet_Sales, pred_simple_train))
+# RMSE of Simple for train/test
+(RMSE(splitted_train$Item_Outlet_Sales, pred_simple_train))/(RMSE(splitted_test$Item_Outlet_Sales, pred_simple_test))
+# RMSE of Log for test dataset
+(RMSE(splitted_test$Item_Outlet_Sales, pred_log_test))
+# RMSE of Log for train dataset
+(RMSE(splitted_train$Item_Outlet_Sales, pred_log_train))
+# RMSE of Log for train/test
+(RMSE(splitted_train$Item_Outlet_Sales, pred_log_train))/(RMSE(splitted_test$Item_Outlet_Sales, pred_log_test))
+# RMSE of Sqrt for test dataset
+(RMSE(splitted_test$Item_Outlet_Sales, pred_sqrt_test))
+# RMSE of Sqrt for train dataset
+(RMSE(splitted_train$Item_Outlet_Sales, pred_sqrt_train))
+# RMSE of Sqrt for train/test
+(RMSE(splitted_train$Item_Outlet_Sales, pred_sqrt_train))/(RMSE(splitted_test$Item_Outlet_Sales, pred_sqrt_test))
+
+
+```
+
+
+
+```{r message = FALSE, warning = FALSE}
+
+#Item_MRP + Outlet_Size_ + `Outlet_Type_Grocery Store` + `Outlet_Type_Supermarket Type1` + `Outlet_Type_Supermarket Type2`+ Item_Identifier_Num + Outlet_Age
+
+str(splitted_train)
+
+```
+
+* Model4: Linear Regression based on summary of regressions(p values<0.05) and based on decision tree results(We created new variable with decision tree using variables which are not used in lineer regression).
+
+```{r message = FALSE, warning = FALSE}
+
+
+(formula_sqrt_tree <- as.formula(sqrt(Item_Outlet_Sales) ~ Item_Weight + 
+                                   Item_Visibility + 
+                                   as.factor(Outlet_Size_High) +
+                                   as.factor(Outlet_Size_Medium) +
+                                   as.factor(Outlet_Size_Small) + 
+                                   as.factor(`Outlet_Location_Type_Tier 1`) +
+                                   as.factor(`Outlet_Location_Type_Tier 2`) +
+                                   as.factor(`Outlet_Location_Type_Tier 3`) +
+                                   as.factor(`Outlet_Type_Supermarket Type3`) +
+                                   as.factor(Item_Identifier_Str2_DR) +
+                                   as.factor(Item_Identifier_Str2_FD) +                                    
+                                   as.factor(Item_Identifier_Str2_NC)))
+
+
+library(rpart)
+library(e1071)
+library(rpart.plot)
+library(caret)
+
+
+main_tree <- rpart(formula_sqrt_tree, data = splitted_train, control = rpart.control(cp=0.001))
+prp(main_tree)
+
+splitted_train_new <- mutate(splitted_train,decision_tree_result = predict(main_tree, splitted_train))
+splitted_test_new <- mutate(splitted_test,decision_tree_result = predict(main_tree, splitted_test))
+
+(formula_sqrt_tree <- as.formula(sqrt(Item_Outlet_Sales) ~ Item_MRP + Outlet_Size_ + `Outlet_Type_Grocery Store` + `Outlet_Type_Supermarket Type1` + `Outlet_Type_Supermarket Type2`+ Item_Identifier_Num + Outlet_Age + decision_tree_result))
+
+
+linear_model_sqrt_tree <- lm(formula_sqrt_tree, data = splitted_train_new)
+summary(linear_model_sqrt_tree)
+  
+# make prediction with test data (%30 of actual train data)
+pred_sqrt_test_tree <-predict(linear_model_sqrt_tree, splitted_test_new) ^ 2
+pred_sqrt_train_tree <-predict(linear_model_sqrt_tree, splitted_train_new) ^ 2
+
+
+# MAE of Sqrt for Test
+(MAE(splitted_test$Item_Outlet_Sales, pred_sqrt_test_tree))
+# RMSE of Sqrt for test dataset
+(RMSE(splitted_test$Item_Outlet_Sales, pred_sqrt_test_tree))
+# RMSE of Sqrt for train dataset
+(RMSE(splitted_train$Item_Outlet_Sales, pred_sqrt_train_tree))
+# RMSE of Sqrt for train/test
+(RMSE(splitted_train$Item_Outlet_Sales, pred_sqrt_train_tree))/(RMSE(splitted_test$Item_Outlet_Sales, pred_sqrt_test_tree))
+
+
+```
+
+### 4.2. Summary of Modelling 
+
+* Summary of all 4 models can be examined as below. Model 1 is built with bulk cleaned data, Model 2 is generated with dummy variables that created while Model 3 has selected columns of dummy dataset according to regression, and model 4 is building a decision tree. And for each dataset, we try the models for simple Item_Outlet_Sales column, log10 and square-root of it. 
+*  Firstly, when we look at Adjusted R-Squared values, they are almost same for each dataset although we change the selected columns for each. It means that the columns that affect mostly are selected for each model. 
+* Adjusted R² measures the goodness of fit of a regression model. Higher the R², better is the model. When we look at the table, we can say that for eachl model, logarithmic of the target column gives us much more better model. This is interesting because we explored on visualizing data part, the squareroot of this column is inclined to be normal distribution. So, logatihmic surprises us ! 
+*  So, we can say that according to R-Squared values, linear regression with bulk dataset without new features (but cleaned) is the best when the target column is logarithmic. It does not matter if the dataset has new features because the significant predictors such as Item_MRP,Outlet_Type,Outlet_Size,Outlet_Age
+ are already in dataset according to summary of models.
+* Secondly,Error measures in the estimation period: Mean Absolute Error (MAE) and Root mean squared error (RMSE) are two of the most common metrics used to measure accuracy for continuous variables. 
+MAE is the average over the test sample of the absolute differences between prediction and actual observation where all individual differences have equal weight.
+RMSE is a quadratic scoring rule that also measures the average magnitude of the error. It’s the square root of the average of squared differences between prediction and actual observation. Both MAE and RMSE express average model prediction error in units of the variable of interest. 
+* So, when we look at the MAE of TEST data for each model, we can say SQRT of target column gives us better model for each model, but there is no big difference between logarithmic. It is expected because squareroot of the target column has normal distribution as we mentioned before. According to MAE values, model 2 with sqrt of the target column is much more better.
+* The RMSE is the square root of the variance of the residuals. It indicates the absolute fit of the model to the data–how close the observed data points are to the model’s predicted values. Whereas R-squared is a relative measure of fit, RMSE is an absolute measure of fit. 
+* RMSE ratio is equal to RMSE_Train / RMSE_Test, so it means there is no big difference between our train and test sample. 
+* Lower values of RMSE indicate better fit. RMSE is a good measure of how accurately the model predicts the response, and is the most important criterion for fit if the main purpose of the model is prediction.
+
+    
+```{r echo=FALSE, message = FALSE, warning = FALSE}
+library(knitr)
+include_graphics("/Users/yetkineser/Desktop/Presentation1.png")
+
+```
+
+
+
+```{r message = FALSE, warning = FALSE}
+par(mfrow = c(2,2))
+
+#par(mfrow=c(2,2))
+plot(linear_model_log1)
+plot(linear_model_log2)
+plot(linear_model_log3)
+```
+
+```{r echo=FALSE, message = FALSE, warning = FALSE}
+
+#qqnorm(linear_model_simple$residuals, ylab = "Residual Quantiles")
+#qqnorm(linear_model_log$residuals, ylab = "Residual Quantiles")
+#qqnorm(linear_model_sqrt$residuals, ylab = "Residual Quantiles")
+#qqnorm(linear_model_sqrt_tree$residuals, ylab = "Residual Quantiles")
+
+
+#par(mfrow = c(2,2))
+
+#plot(linear_model_simple$fitted.values, linear_model_simple$residuals)
+#plot(linear_model_log$fitted.values, linear_model_simple$residuals)
+#plot(linear_model_sqrt$fitted.values, linear_model_simple$residuals)
+#plot(linear_model_sqrt_tree$fitted.values, linear_model_simple$residuals)
+
+```
+
+* As we can see on Residuals vs Fitted graph of all models with log target column, there is no specific trend on them. So, we can say linear regression model with logarithmic target is the best way for model according to R-Square and residual vs fitted value plot. This model can be further improved by detecting outliers and high leverage points. **In conclusion, we can say that we should use linear regression with cleaned-bulk data and logarithmic target column for this dataset.**
+
+
+##References
+
+###Dataset
+
+* [Big Mart Sales Practise Problem](https://datahack.analyticsvidhya.com/contest/practice-problem-big-mart-sales-iii/)
+
+###Analysis & Graphs 
+* [Dplyr](https://cran.r-project.org/web/packages/dplyr/vignettes/dplyr.html)
+* [https://www.rstudio.com/resources/cheatsheets/](https://www.rstudio.com/resources/cheatsheets/)
+* [https://mef-bda503.github.io/files/02_Tidyverse.html#1](Class Presentation about Tidyverse & Dplyr) 
+* [Udacity Data Analysis with R  - Lesson 3 and 5](https://classroom.udacity.com/courses/ud651) 
+* [DataCamp - Cleaning Data with R](https://www.datacamp.com/courses/cleaning-data-in-r)
+* [R Project-An Introduction to corrplot Package](https://cran.r-project.org/web/packages/corrplot/vignettes/corrplot-intro.html)
+* [https://plot.ly/ggplot2/](https://plot.ly/ggplot2/)
+* [ggplot2](http://tutorials.iq.harvard.edu/R/Rgraphics/Rgraphics.html)
+* [gplot2](ghttp://ggplot2.tidyverse.org/)
+
+###Modeling
+
+* [statistical-modeling-in-r-part-1](https://www.datacamp.com/courses/statistical-modeling-in-r-part-1)
+* [Kernel from Analyticsvidya.com](https://www.analyticsvidhya.com/blog/2016/02/complete-tutorial-learn-data-science-scratch/#five)
+* [Observing the Results](https://www.theanalysisfactor.com/assessing-the-fit-of-regression-models/)
